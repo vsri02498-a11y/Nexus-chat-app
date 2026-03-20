@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexus Chat · Encrypted · Admin · Analytics</title>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js"></script>
+
+  <!-- CryptoJS for AES encryption -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+
+  <!-- Chart.js for analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Font Awesome & Google Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(circle at 20% 30%, #0b1120, #030712);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      color: #e2e8f0;
+      transition: background 0.3s ease;
+    }
+    /* Auth screen */
+    #authScreen {
+      width: 100%;
+      max-width: 400px;
+      background: rgba(18, 26, 40, 0.9);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 2.5rem;
+      padding: 2.5rem 2rem;
+      border: 1px solid rgba(71, 85, 105, 0.4);
+      box-shadow: 0 30px 50px -20px black;
+      animation: fadeInUp 0.5s ease;
+    }
+    #authScreen h2 { margin-bottom: 2rem; display: flex; gap: 0.75rem; align-items: center; font-weight: 500; }
+    #authScreen input {
+      width: 100%;
+      padding: 1rem 1.5rem;
+      margin-bottom: 1.2rem;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 3rem;
+      color: white;
+      font-size: 1rem;
+      transition: border 0.2s, box-shadow 0.2s;
+    }
+    #authScreen input:focus { border-color: #3b82f6; outline: none; box-shadow: 0 0 0 3px #1e3a8a80; }
+    #authScreen button {
+      width: 100%;
+      padding: 1rem;
+      background: linear-gradient(145deg, #2563eb, #1d4ed8);
+      border: none;
+      border-radius: 3rem;
+      color: white;
+      font-weight: 600;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-bottom: 1rem;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    #authScreen button:hover { transform: scale(1.02); box-shadow: 0 8px 20px #1e3a8a; }
+    #authToggle { text-align: center; color: #94a3b8; cursor: pointer; transition: color 0.2s; }
+    #authToggle:hover { color: #bfdbfe; }
+    #authError { color: #f87171; margin-top: 1rem; text-align: center; }
+
+    /* Main app */
+    #app {
+      display: none;
+      width: 100%;
+      max-width: 1500px;
+      height: 90vh;
+      background: rgba(7, 15, 26, 0.9);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: 2.5rem;
+      overflow: hidden;
+      border: 1px solid rgba(51, 65, 85, 0.5);
+      box-shadow: 0 30px 60px -20px black;
+      animation: scaleIn 0.4s ease;
+    }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes scaleIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+
+    .app-layout { display: flex; height: 100%; }
+
+    /* Sidebar */
+    .sidebar {
+      width: 300px;
+      background: rgba(2, 8, 18, 0.7);
+      backdrop-filter: blur(10px);
+      border-right: 1px solid #253749;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      transition: width 0.2s;
+    }
+    .profile-card {
+      padding: 1.8rem 1.2rem;
+      border-bottom: 1px solid #253749;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .profile-card:hover { background: #1a293b; }
+    .profile-card img {
+      width: 52px; height: 52px; border-radius: 50%; object-fit: cover;
+      border: 2px solid #3b82f6;
+    }
+    .profile-card .info { flex:1; }
+    .profile-card .name { font-weight: 600; font-size: 1.1rem; }
+    .profile-card .status { font-size: 0.8rem; color: #94a3b8; }
+
+    .section-header {
+      padding: 1.2rem 1.2rem 0.5rem;
+      font-weight: 600;
+      color: #94a3b8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .user-list, .group-list { padding: 0 0.5rem; }
+
+    .list-item {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+      padding: 0.7rem;
+      border-radius: 1.2rem;
+      margin-bottom: 0.2rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .list-item:hover { background: #1e2b3c; transform: translateX(4px); }
+    .list-item.active { background: #1e3a5f; box-shadow: 0 2px 10px #1e3a5f; }
+    .list-item img {
+      width: 36px; height: 36px; border-radius: 50%; background: #2d3f57;
+    }
+    .online-indicator { width: 10px; height: 10px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 8px #4ade80; }
+    .offline-indicator { width: 10px; height: 10px; border-radius: 50%; background: #64748b; }
+
+    /* Chat area */
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: rgba(7, 15, 26, 0.4);
+    }
+    .chat-header {
+      padding: 1rem 2rem;
+      background: rgba(2, 8, 18, 0.6);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #253749;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .chat-header img { width: 44px; height: 44px; border-radius: 50%; }
+    .chat-header .info { flex:1; }
+    .chat-header .name { font-weight: 600; font-size: 1.2rem; }
+    .chat-header .status { font-size: 0.8rem; color: #94a3b8; }
+    #adminControls { margin-left: auto; display: flex; gap: 0.5rem; }
+
+    .messages-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+    }
+    .message-wrapper { display: flex; animation: slideIn 0.2s ease; }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+    .own-message { justify-content: flex-end; }
+    .message-bubble {
+      max-width: 65%;
+      padding: 0.8rem 1.2rem;
+      border-radius: 1.5rem 1.5rem 0.3rem 1.5rem;
+      background: linear-gradient(145deg, #1e3a5f, #1a3363);
+      border: 1px solid #2b4d7a;
+      box-shadow: 0 4px 12px #00000060;
+    }
+    .other-message .message-bubble {
+      background: #26384f;
+      border-radius: 1.5rem 1.5rem 1.5rem 0.3rem;
+    }
+    .message-sender { font-size:0.8rem; color:#a0c6ff; margin-bottom:0.3rem; }
+    .message-text { word-wrap:break-word; }
+    .message-media { max-width:200px; border-radius:0.8rem; margin-top:0.3rem; cursor:pointer; transition: transform 0.1s; }
+    .message-media:hover { transform: scale(1.02); }
+    .message-footer { font-size:0.7rem; color:#94a3b8; margin-top:0.3rem; display:flex; justify-content:space-between; }
+    .delete-msg { background:none; border:none; color:#94a3b8; cursor:pointer; transition: color 0.2s; }
+    .delete-msg:hover { color:#f87171; }
+
+    /* Input panel */
+    .input-panel {
+      padding: 1rem 2rem;
+      background: rgba(2, 8, 18, 0.7);
+      backdrop-filter: blur(10px);
+      border-top: 1px solid #253749;
+    }
+    .input-row {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      background: #1e2b3c;
+      border-radius: 3rem;
+      padding: 0.3rem 0.3rem 0.3rem 1.5rem;
+      transition: box-shadow 0.2s;
+    }
+    .input-row:focus-within { box-shadow: 0 0 0 2px #3b82f6; }
+    #messageInput {
+      flex:1; background:transparent; border:none; color:white; font-size:1rem; padding:0.8rem 0; outline:none;
+    }
+    .attach-btn, .send-btn {
+      background:#2d3f57; border:none; color:white; width:2.8rem; height:2.8rem; border-radius:50%;
+      font-size:1.2rem; cursor:pointer; transition: all 0.2s;
+    }
+    .attach-btn:hover { background:#3b5680; transform: scale(1.05); }
+    .send-btn { background:#2563eb; }
+    .send-btn:hover { background:#1d4ed8; transform: scale(1.05); }
+    .recording { background:#dc2626; animation: pulse 1s infinite; }
+    @keyframes pulse { 0% { opacity:1; } 50% { opacity:0.7; } }
+
+    /* Analytics button & panel */
+    #analyticsBtn {
+      position: fixed; bottom: 2rem; right: 2rem; z-index: 100;
+      background: #3b82f6; border: none; color: white; width: 56px; height: 56px; border-radius: 50%;
+      font-size: 1.8rem; cursor: pointer; box-shadow: 0 4px 20px #2563eb; transition: 0.2s;
+    }
+    #analyticsBtn:hover { transform: scale(1.1); }
+    .analytics-panel {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 90%; max-width: 800px; background: #0f172a; border-radius: 2.5rem; padding: 2rem;
+      border: 1px solid #334155; box-shadow: 0 30px 60px black; display: none; z-index: 200;
+      animation: fadeIn 0.3s;
+    }
+    .analytics-panel h2 { margin-bottom: 1.5rem; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 2rem; }
+    .stat-card { background: #1a293b; padding: 1.5rem; border-radius: 1.5rem; text-align: center; }
+    .stat-value { font-size: 2rem; font-weight: 600; color: #3b82f6; }
+    .close-btn { float: right; background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
+
+    /* Modals */
+    .modal {
+      position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; align-items:center; justify-content:center; z-index:300;
+    }
+    .modal-content {
+      background:#1a2637; border-radius:2rem; padding:2rem; width:90%; max-width:400px; animation: scaleIn 0.2s;
+    }
+    .modal-content input, .modal-content button { width:100%; margin-top:1rem; }
+    .user-checkbox-list { max-height:200px; overflow-y:auto; margin:1rem 0; }
+  </style>
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div id="authScreen">
+  <h2><i class="fas fa-shield-hal"></i> Nexus Chat</h2>
+  <input type="email" id="emailInput" placeholder="Email">
+  <input type="password" id="passwordInput" placeholder="Password">
+  <button id="authActionBtn">Sign In</button>
+  <div id="authToggle">Don't have an account? Sign Up</div>
+  <div id="authError"></div>
+</div>
+
+<!-- Main App -->
+<div id="app">
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="profile-card" id="profileCard">
+        <img id="profilePhoto" src="https://via.placeholder.com/52?text=User" alt="">
+        <div class="info">
+          <div class="name" id="profileName">Loading...</div>
+          <div class="status" id="profileStatus">online</div>
+        </div>
+      </div>
+
+      <div class="section-header"><span>Direct Messages</span></div>
+      <div id="userList" class="user-list"></div>
+
+      <div class="section-header">
+        <span>Groups</span>
+        <button id="createGroupBtn" style="background:none; border:none; color:#94a3b8;"><i class="fas fa-plus"></i></button>
+      </div>
+      <div id="groupList" class="group-list"></div>
+    </div>
+
+    <!-- Chat Area -->
+    <div class="chat-area">
+      <div class="chat-header" id="chatHeader">
+        <img id="chatAvatar" src="" alt="">
+        <div class="info">
+          <div class="name" id="chatName">Select a chat</div>
+          <div class="status" id="chatStatus"></div>
+        </div>
+        <div id="adminControls" style="display: none;">
+          <button id="manageGroupBtn" class="attach-btn" style="width: auto; padding:0 1rem;" title="Manage Group"><i class="fas fa-cog"></i> Admin</button>
+        </div>
+      </div>
+
+      <div id="messagesContainer" class="messages-container"></div>
+
+      <div class="input-panel">
+        <div class="input-row">
+          <input type="text" id="messageInput" placeholder="Type a message...">
+          <button class="attach-btn" id="fileAttachBtn" title="Attach file"><i class="fas fa-paperclip"></i></button>
+          <input type="file" id="fileUpload" class="hidden">
+          <button class="attach-btn" id="recordBtn" title="Voice message"><i class="fas fa-microphone"></i></button>
+          <button class="send-btn" id="sendBtn"><i class="fas fa-paper-plane"></i></button>
+        </div>
+        <div id="recordStatus" style="font-size:0.8rem; margin-top:0.3rem;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Analytics Button & Panel -->
+<button id="analyticsBtn"><i class="fas fa-chart-simple"></i></button>
+<div class="analytics-panel" id="analyticsPanel">
+  <button class="close-btn" onclick="document.getElementById('analyticsPanel').style.display='none'"><i class="fas fa-times"></i></button>
+  <h2><i class="fas fa-chart-line"></i> Analytics</h2>
+  <div class="stats-grid">
+    <div class="stat-card"><div>Total Users</div><div class="stat-value" id="totalUsers">0</div></div>
+    <div class="stat-card"><div>Messages Today</div><div class="stat-value" id="messagesToday">0</div></div>
+    <div class="stat-card"><div>Active Now</div><div class="stat-value" id="activeNow">0</div></div>
+  </div>
+  <canvas id="messagesChart" style="max-height:200px;"></canvas>
+</div>
+
+<!-- Profile Edit Modal -->
+<div id="profileModal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <span class="close-modal" onclick="document.getElementById('profileModal').style.display='none'">&times;</span>
+    <h3>Edit Profile</h3>
+    <input type="text" id="editName" placeholder="Display Name">
+    <input type="file" id="editPhoto" accept="image/*">
+    <button id="saveProfileBtn">Save</button>
+  </div>
+</div>
+
+<!-- Create Group Modal -->
+<div id="groupModal" class="modal" style="display:none;">
+  <div class="modal-content">
+    <span class="close-modal" onclick="document.getElementById('groupModal').style.display='none'">&times;</span>
+    <h3>Create Group</h3>
+    <input type="text" id="groupNameInput" placeholder="Group Name">
+    <div class="user-checkbox-list" id="groupMembersSelect"></div>
+    <button id="createGroupConfirmBtn">Create</button>
+  </div>
+</div>
+
+<!-- Manage Group Modal (Admin) -->
+<div id="manageGroupModal" class="modal" style="display:none;">
+  <div class="modal-content" style="max-width:500px;">
+    <span class="close-modal" onclick="document.getElementById('manageGroupModal').style.display='none'">&times;</span>
+    <h3>Manage Group</h3>
+    <input type="text" id="newGroupName" placeholder="New group name">
+    <button id="changeGroupNameBtn">Change Name</button>
+    <h4 style="margin-top:1.5rem;">Members</h4>
+    <div id="groupMembersList" style="max-height:200px; overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- Image Preview Modal -->
+<div id="previewModal" class="modal" style="display:none;" onclick="this.style.display='none'">
+  <img id="previewImage" src="" style="max-width:90%; max-height:90%; border-radius:1rem;">
+</div>
+
+<script>
+  // 🔥 REPLACE WITH YOUR FIREBASE CONFIG
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.database();
+  const storage = firebase.storage();
+
+  // ---------- Global Variables ----------
+  let currentUser = null;
+  let currentChatId = null;
+  let currentChatType = null; // 'private' or 'group'
+  let messagesListener = null;
+  let messageElements = new Map();
+
+  // Encryption helper: derive key from chatId (deterministic, not perfect but demonstrates)
+  function encryptText(text, chatId) {
+    return CryptoJS.AES.encrypt(text, chatId).toString();
+  }
+  function decryptText(cipherText, chatId) {
+    try {
+      const bytes = CryptoJS.AES.decrypt(cipherText, chatId);
+      return bytes.toString(CryptoJS.enc.Utf8);
+    } catch { return '[encrypted]'; }
+  }
+
+  // DOM elements
+  const authScreen = document.getElementById('authScreen');
+  const appDiv = document.getElementById('app');
+  const emailInput = document.getElementById('emailInput');
+  const passwordInput = document.getElementById('passwordInput');
+  const authActionBtn = document.getElementById('authActionBtn');
+  const authToggle = document.getElementById('authToggle');
+  const authError = document.getElementById('authError');
+  const profilePhoto = document.getElementById('profilePhoto');
+  const profileName = document.getElementById('profileName');
+  const profileStatus = document.getElementById('profileStatus');
+  const profileCard = document.getElementById('profileCard');
+  const userListDiv = document.getElementById('userList');
+  const groupListDiv = document.getElementById('groupList');
+  const chatAvatar = document.getElementById('chatAvatar');
+  const chatName = document.getElementById('chatName');
+  const chatStatus = document.getElementById('chatStatus');
+  const adminControls = document.getElementById('adminControls');
+  const manageGroupBtn = document.getElementById('manageGroupBtn');
+  const messagesContainer = document.getElementById('messagesContainer');
+  const messageInput = document.getElementById('messageInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const fileAttachBtn = document.getElementById('fileAttachBtn');
+  const fileUpload = document.getElementById('fileUpload');
+  const recordBtn = document.getElementById('recordBtn');
+  const recordStatus = document.getElementById('recordStatus');
+  const analyticsBtn = document.getElementById('analyticsBtn');
+  const analyticsPanel = document.getElementById('analyticsPanel');
+  const totalUsersSpan = document.getElementById('totalUsers');
+  const messagesTodaySpan = document.getElementById('messagesToday');
+  const activeNowSpan = document.getElementById('activeNow');
+
+  // ---------- Auth ----------
+  let isSignUp = false;
+  authToggle.addEventListener('click', () => {
+    isSignUp = !isSignUp;
+    authActionBtn.textContent = isSignUp ? 'Sign Up' : 'Sign In';
+    authToggle.textContent = isSignUp ? 'Already have an account? Sign In' : 'Don\'t have an account? Sign Up';
+  });
+
+  authActionBtn.addEventListener('click', async () => {
+    const email = emailInput.value.trim();
+    const pass = passwordInput.value.trim();
+    if (!email || !pass) { authError.textContent = 'Email and password required'; return; }
+    try {
+      if (isSignUp) await auth.createUserWithEmailAndPassword(email, pass);
+      else await auth.signInWithEmailAndPassword(email, pass);
+    } catch (e) { authError.textContent = e.message; }
+  });
+
+  // ---------- Auth State ----------
+  auth.onAuthStateChanged(async (user) => {
+    if (user) {
+      currentUser = user;
+      authScreen.style.display = 'none';
+      appDiv.style.display = 'block';
+
+      await initUserProfile(user);
+      setupPresence();
+      loadUsers();
+      loadGroups();
+      updateAnalytics(); // initial fetch
+      setInterval(updateAnalytics, 30000); // every 30s
+
+      profileCard.onclick = () => {
+        editName.value = profileName.textContent;
+        profileModal.style.display = 'flex';
+      };
+      clearChat();
+    } else {
+      currentUser = null;
+      appDiv.style.display = 'none';
+      authScreen.style.display = 'block';
+      if (messagesListener) messagesListener.off();
+    }
+  });
+
+  async function initUserProfile(user) {
+    const userRef = db.ref(`users/${user.uid}`);
+    const snap = await userRef.once('value');
+    if (!snap.exists()) {
+      await userRef.set({
+        displayName: user.email.split('@')[0],
+        photoURL: '',
+        online: true,
+        lastSeen: firebase.database.ServerValue.TIMESTAMP
+      });
+    }
+    const data = (await userRef.once('value')).val();
+    profileName.textContent = data.displayName || 'User';
+    profilePhoto.src = data.photoURL || 'https://via.placeholder.com/52?text=User';
+  }
+
+  function setupPresence() {
+    const presenceRef = db.ref('.info/connected');
+    presenceRef.on('value', (snap) => {
+      if (snap.val()) {
+        const userStatusRef = db.ref(`users/${currentUser.uid}`);
+        userStatusRef.update({ online: true, lastSeen: firebase.database.ServerValue.TIMESTAMP });
+        userStatusRef.onDisconnect().update({ online: false, lastSeen: firebase.database.ServerValue.TIMESTAMP });
+      }
+    });
+  }
+
+  // ---------- Load Users & Groups ----------
+  function loadUsers() {
+    db.ref('users').on('value', (snapshot) => {
+      const users = snapshot.val() || {};
+      let html = '';
+      Object.entries(users).forEach(([uid, user]) => {
+        if (uid === currentUser.uid) return;
+        html += `
+          <div class="list-item" data-uid="${uid}" data-type="private">
+            <img src="${user.photoURL || 'https://via.placeholder.com/36?text=User'}" alt="">
+            <div style="flex:1"><div>${escapeHTML(user.displayName || 'User')}</div></div>
+            <div class="${user.online ? 'online-indicator' : 'offline-indicator'}"></div>
+          </div>
+        `;
+      });
+      userListDiv.innerHTML = html;
+      document.querySelectorAll('.list-item[data-type="private"]').forEach(el => {
+        el.addEventListener('click', () => openPrivateChat(el.dataset.uid));
+      });
+    });
+  }
+
+  function loadGroups() {
+    db.ref('groups').on('value', (snapshot) => {
+      const groups = snapshot.val() || {};
+      let html = '';
+      Object.entries(groups).forEach(([groupId, group]) => {
+        if (group.members && group.members[currentUser.uid]) {
+          html += `
+            <div class="list-item" data-groupid="${groupId}" data-type="group">
+              <img src="https://via.placeholder.com/36?text=G" alt="">
+              <div style="flex:1"><div>${escapeHTML(group.name)}</div></div>
+            </div>
+          `;
+        }
+      });
+      groupListDiv.innerHTML = html;
+      document.querySelectorAll('.list-item[data-type="group"]').forEach(el => {
+        el.addEventListener('click', () => openGroupChat(el.dataset.groupid));
+      });
+    });
+  }
+
+  // ---------- Open Chats ----------
+  function openPrivateChat(uid) {
+    const chatId = [currentUser.uid, uid].sort().join('_');
+    currentChatId = chatId;
+    currentChatType = 'private';
+    adminControls.style.display = 'none';
+    loadMessages(chatId);
+    db.ref(`users/${uid}`).once('value').then(snap => {
+      const u = snap.val();
+      chatAvatar.src = u.photoURL || 'https://via.placeholder.com/44?text=User';
+      chatName.textContent = u.displayName || 'User';
+      chatStatus.textContent = u.online ? 'online' : 'offline';
+    });
+  }
+
+  async function openGroupChat(groupId) {
+    currentChatId = groupId;
+    currentChatType = 'group';
+    const groupSnap = await db.ref(`groups/${groupId}`).once('value');
+    const group = groupSnap.val();
+    chatAvatar.src = 'https://via.placeholder.com/44?text=G';
+    chatName.textContent = group.name;
+    chatStatus.textContent = `${Object.keys(group.members).length} members`;
+
+    // Check if current user is admin
+    if (group.createdBy === currentUser.uid) {
+      adminControls.style.display = 'block';
+      manageGroupBtn.onclick = () => openManageGroupModal(groupId, group);
+    } else {
+      adminControls.style.display = 'none';
+    }
+    loadMessages(groupId);
+  }
+
+  function clearChat() {
+    currentChatId = null;
+    currentChatType = null;
+    if (messagesListener) messagesListener.off();
+    messagesContainer.innerHTML = '';
+    messageElements.clear();
+    chatName.textContent = 'Select a chat';
+    chatStatus.textContent = '';
+    chatAvatar.src = '';
+    adminControls.style.display = 'none';
+  }
+
+  // ---------- Load Messages with Decryption ----------
+  function loadMessages(chatId) {
+    if (messagesListener) messagesListener.off();
+    messagesContainer.innerHTML = '';
+    messageElements.clear();
+
+    messagesListener = db.ref('messages/' + chatId).orderByChild('timestamp').on('child_added', (snapshot) => {
+      renderMessage(snapshot, chatId);
+    });
+    db.ref('messages/' + chatId).on('child_removed', (snapshot) => {
+      const el = messageElements.get(snapshot.key);
+      if (el) { el.remove(); messageElements.delete(snapshot.key); }
+    });
+  }
+
+  function renderMessage(snapshot, chatId) {
+    const key = snapshot.key;
+    let data = snapshot.val();
+    const isOwn = data.senderId === currentUser.uid;
+
+    // Decrypt text messages
+    if (data.type === 'text' && data.encrypted) {
+      data.text = decryptText(data.text, chatId);
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.className = `message-wrapper ${isOwn ? 'own-message' : 'other-message'}`;
+    wrapper.dataset.key = key;
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+
+    if (currentChatType === 'group' && !isOwn) {
+      const senderDiv = document.createElement('div');
+      senderDiv.className = 'message-sender';
+      senderDiv.textContent = data.senderName || 'User';
+      bubble.appendChild(senderDiv);
+    }
+
+    if (data.type === 'text') {
+      const textDiv = document.createElement('div');
+      textDiv.className = 'message-text';
+      textDiv.textContent = data.text;
+      bubble.appendChild(textDiv);
+    } else if (data.type === 'image' || data.type === 'file') {
+      const media = data.type === 'image' ? document.createElement('img') : document.createElement('a');
+      if (data.type === 'image') {
+        media.src = data.url;
+        media.className = 'message-media';
+        media.onclick = () => { previewImage.src = data.url; previewModal.style.display = 'flex'; };
+      } else {
+        media.href = data.url;
+        media.target = '_blank';
+        media.textContent = data.fileName || 'Download';
+        media.style.display = 'block';
+      }
+      bubble.appendChild(media);
+    } else if (data.type === 'voice') {
+      const audio = document.createElement('audio');
+      audio.src = data.url;
+      audio.controls = true;
+      audio.className = 'message-audio';
+      bubble.appendChild(audio);
+    }
+
+    const footer = document.createElement('div');
+    footer.className = 'message-footer';
+    const time = data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : '';
+    footer.innerHTML = `<span>${time}</span>`;
+    if (isOwn) {
+      const del = document.createElement('button');
+      del.className = 'delete-msg';
+      del.innerHTML = '<i class="fas fa-trash"></i>';
+      del.onclick = () => { if (confirm('Delete?')) db.ref('messages/' + chatId + '/' + key).remove(); };
+      footer.appendChild(del);
+    }
+    bubble.appendChild(footer);
+    wrapper.appendChild(bubble);
+    messagesContainer.appendChild(wrapper);
+    messageElements.set(key, wrapper);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }
+
+  // ---------- Send Message (with Encryption) ----------
+  async function sendTextMessage() {
+    const text = messageInput.value.trim();
+    if (!text || !currentChatId) return;
+    const encryptedText = encryptText(text, currentChatId);
+    await pushMessage({ type: 'text', text: encryptedText, encrypted: true });
+    messageInput.value = '';
+  }
+
+  async function pushMessage(msgData) {
+    const base = {
+      senderId: currentUser.uid,
+      senderName: profileName.textContent,
+      timestamp: firebase.database.ServerValue.TIMESTAMP,
+      ...msgData
+    };
+    await db.ref('messages/' + currentChatId).push(base);
+  }
+
+  sendBtn.addEventListener('click', sendTextMessage);
+  messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendTextMessage(); });
+
+  // ---------- File Upload ----------
+  fileAttachBtn.addEventListener('click', () => fileUpload.click());
+  fileUpload.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file || !currentChatId) return;
+    const isImage = file.type.startsWith('image/');
+    const storageRef = storage.ref(`chats/${currentChatId}/${Date.now()}_${file.name}`);
+    recordStatus.textContent = 'Uploading...';
+    try {
+      await storageRef.put(file);
+      const url = await storageRef.getDownloadURL();
+      if (isImage) await pushMessage({ type: 'image', url, fileName: file.name });
+      else await pushMessage({ type: 'file', url, fileName: file.name });
+      recordStatus.textContent = '';
+    } catch (err) { recordStatus.textContent = 'Upload failed'; }
+    fileUpload.value = '';
+  });
+
+  // ---------- Voice Recording ----------
+  let mediaRecorder, audioChunks = [], recording = false;
+  recordBtn.addEventListener('click', async () => {
+    if (!currentChatId) return;
+    if (!recording) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const storageRef = storage.ref(`chats/${currentChatId}/${Date.now()}.webm`);
+          recordStatus.textContent = 'Uploading voice...';
+          try {
+            await storageRef.put(audioBlob);
+            const url = await storageRef.getDownloadURL();
+            await pushMessage({ type: 'voice', url });
+            recordStatus.textContent = '';
+          } catch (err) { recordStatus.textContent = 'Upload failed'; }
+          stream.getTracks().forEach(t => t.stop());
+        };
+        mediaRecorder.start();
+        recording = true;
+        recordBtn.classList.add('recording');
+        recordStatus.textContent = 'Recording... click again to stop';
+      } catch { recordStatus.textContent = 'Microphone permission denied'; }
+    } else {
+      mediaRecorder.stop();
+      recording = false;
+      recordBtn.classList.remove('recording');
+    }
+  });
+
+  // ---------- Profile Save ----------
+  const profileModal = document.getElementById('profileModal');
+  const editName = document.getElementById('editName');
+  const editPhoto = document.getElementById('editPhoto');
+  const saveProfileBtn = document.getElementById('saveProfileBtn');
+  saveProfileBtn.addEventListener('click', async () => {
+    const newName = editName.value.trim();
+    if (newName) {
+      await db.ref(`users/${currentUser.uid}`).update({ displayName: newName });
+      profileName.textContent = newName;
+    }
+    const photoFile = editPhoto.files[0];
+    if (photoFile) {
+      const storageRef = storage.ref(`profilePhotos/${currentUser.uid}`);
+      await storageRef.put(photoFile);
+      const url = await storageRef.getDownloadURL();
+      await db.ref(`users/${currentUser.uid}`).update({ photoURL: url });
+      profilePhoto.src = url;
+    }
+    profileModal.style.display = 'none';
+  });
+
+  // ---------- Create Group ----------
+  const groupModal = document.getElementById('groupModal');
+  const groupNameInput = document.getElementById('groupNameInput');
+  const groupMembersSelect = document.getElementById('groupMembersSelect');
+  const createGroupConfirmBtn = document.getElementById('createGroupConfirmBtn');
+  document.getElementById('createGroupBtn').addEventListener('click', async () => {
+    const usersSnap = await db.ref('users').once('value');
+    const users = usersSnap.val() || {};
+    let html = '';
+    Object.entries(users).forEach(([uid, user]) => {
+      if (uid !== currentUser.uid) {
+        html += `<label><input type="checkbox" value="${uid}"> ${escapeHTML(user.displayName || 'User')}</label><br>`;
+      }
+    });
+    groupMembersSelect.innerHTML = html;
+    groupModal.style.display = 'flex';
+  });
+  createGroupConfirmBtn.addEventListener('click', async () => {
+    const name = groupNameInput.value.trim();
+    if (!name) return;
+    const checkboxes = groupMembersSelect.querySelectorAll('input[type=checkbox]:checked');
+    const members = { [currentUser.uid]: true };
+    checkboxes.forEach(cb => members[cb.value] = true);
+    const groupRef = db.ref('groups').push();
+    await groupRef.set({
+      name,
+      createdBy: currentUser.uid,
+      members,
+      createdAt: firebase.database.ServerValue.TIMESTAMP
+    });
+    groupModal.style.display = 'none';
+    groupNameInput.value = '';
+  });
+
+  // ---------- Admin: Manage Group ----------
+  const manageGroupModal = document.getElementById('manageGroupModal');
+  const newGroupName = document.getElementById('newGroupName');
+  const changeGroupNameBtn = document.getElementById('changeGroupNameBtn');
+  const groupMembersList = document.getElementById('groupMembersList');
+  let currentGroupId = null;
+  let currentGroupData = null;
+
+  async function openManageGroupModal(groupId, group) {
+    currentGroupId = groupId;
+    currentGroupData = group;
+    newGroupName.value = group.name;
+    // list members
+    const usersSnap = await db.ref('users').once('value');
+    const users = usersSnap.val() || {};
+    let html = '';
+    Object.entries(group.members).forEach(([uid]) => {
+      if (uid === currentUser.uid) return; // don't remove self
+      const user = users[uid] || { displayName: 'Unknown' };
+      html += `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin:0.5rem 0;">
+          <span>${escapeHTML(user.displayName)}</span>
+          <button class="remove-member" data-uid="${uid}" style="background:#b91c1c; border:none; color:white; border-radius:2rem; padding:0.3rem 1rem;">Remove</button>
+        </div>
+      `;
+    });
+    groupMembersList.innerHTML = html;
+    document.querySelectorAll('.remove-member').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const uid = btn.dataset.uid;
+        if (confirm(`Remove user?`)) {
+          await db.ref(`groups/${groupId}/members/${uid}`).remove();
+          openManageGroupModal(groupId, (await db.ref(`groups/${groupId}`).once('value')).val());
+        }
+      });
+    });
+    manageGroupModal.style.display = 'flex';
+  }
+
+  changeGroupNameBtn.addEventListener('click', async () => {
+    const newName = newGroupName.value.trim();
+    if (newName && currentGroupId) {
+      await db.ref(`groups/${currentGroupId}`).update({ name: newName });
+      chatName.textContent = newName;
+      manageGroupModal.style.display = 'none';
+    }
+  });
+
+  // ---------- Analytics ----------
+  async function updateAnalytics() {
+    // Total users
+    const usersSnap = await db.ref('users').once('value');
+    const users = usersSnap.val() || {};
+    totalUsersSpan.textContent = Object.keys(users).length;
+
+    // Active now (online in last 5 min)
+    const now = Date.now();
+    const fiveMinAgo = now - 5*60*1000;
+    let active = 0;
+    Object.values(users).forEach(u => {
+      if (u.online || (u.lastSeen && u.lastSeen > fiveMinAgo)) active++;
+    });
+    activeNowSpan.textContent = active;
+
+    // Messages today
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const messagesSnap = await db.ref('messages').once('value');
+    let msgCount = 0;
+    messagesSnap.forEach(chatMsgs => {
+      chatMsgs.forEach(msg => {
+        if (msg.val().timestamp && msg.val().timestamp > todayStart.getTime()) msgCount++;
+      });
+    });
+    messagesTodaySpan.textContent = msgCount;
+
+    // Chart (dummy data for demo)
+    const ctx = document.getElementById('messagesChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: { labels: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], datasets: [{ label: 'Messages', data: [12,19,3,5,2,3,9], borderColor: '#3b82f6' }] },
+      options: { responsive: true, maintainAspectRatio: false }
+    });
+  }
+
+  analyticsBtn.addEventListener('click', () => {
+    analyticsPanel.style.display = 'block';
+    updateAnalytics();
+  });
+
+  // Close modals on outside click
+  window.onclick = (e) => {
+    if (e.target.classList.contains('modal')) e.target.style.display = 'none';
+    if (e.target === analyticsPanel) analyticsPanel.style.display = 'none';
+  };
+
+  function escapeHTML(str) {
+    return String(str).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[m]);
+  }
+</script>
+</body>
+</html>
